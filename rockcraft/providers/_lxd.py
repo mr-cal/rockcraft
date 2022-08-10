@@ -23,7 +23,11 @@ from typing import Generator, List
 
 from craft_providers import Executor, bases, lxd
 
-from rockcraft.utils import confirm_with_user, get_managed_environment_project_path
+from rockcraft.utils import (
+    confirm_with_user,
+    get_managed_environment_project_path,
+    get_managed_environment_snap_channel,
+)
 
 from ._buildd import BASE_TO_BUILDD_IMAGE_ALIAS, RockcraftBuilddBaseConfiguration
 from ._provider import Provider, ProviderError
@@ -164,7 +168,16 @@ class LXDProvider(Provider):
             raise ProviderError(str(error)) from error
 
         base_configuration = RockcraftBuilddBaseConfiguration(
-            alias=alias, environment=environment, hostname=instance_name
+            alias=alias,
+            environment=environment,
+            hostname=instance_name,
+            snaps=[
+                bases.buildd.Snap(
+                    name="rockcraft",
+                    channel=get_managed_environment_snap_channel(),
+                    classic=True,
+                )
+            ],
         )
 
         try:
