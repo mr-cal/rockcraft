@@ -69,7 +69,7 @@ test-black:
 
 .PHONY: test-codespell
 test-codespell:
-	codespell .
+	codespell . --skip './tools/external'
 
 .PHONY: test-flake8
 test-flake8:
