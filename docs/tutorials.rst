@@ -28,26 +28,26 @@ Install Rockcraft on your host:
 Project Setup
 -------------
 
-Create a new directory and write following into a a text editor and
-save it as ``rockcraft.yaml``:
+Create a new directory and execute the command `rockcraft init`.  This creates a boilerplate `rockcraft.yaml` file with the following contents:
 
 .. code-block:: yaml
 
-    name: hello
-    summary: Hello World
-    description: The most basic example of a ROCK.
-    version: "1.0"
-    base: ubuntu:20.04
-    license: Apache-2.0
-    cmd: [/usr/bin/hello, -t]
-    platforms:
-      amd64:  # Make sure this value matches your computer's architecture
+   name: my-rock-name # the name of your ROCK
+    base: ubuntu:22.04 # the base environment for this ROCK
+    version: '0.1' # just for humans. Semantic versioning is recommended
+    summary: Single-line elevator pitch for your amazing ROCK # 79 char long summary
+    description: |
+        This is my my-rock-name's description. You have a paragraph or two to tell the
+        most important story about it. Keep it under 100 words though,
+        we live in tweetspace and your description wants to look good in the
+        container registries out there.
+    license: GPL-3.0 # your application's SPDX license
+    platforms: # The platforms this ROCK should be built on and run on
+        amd64:
 
     parts:
-      hello:
-        plugin: nil
-        overlay-packages:
-          - hello
+        my-part:
+            plugin: nil
 
 Pack the ROCK with Rockcraft
 ----------------------------
