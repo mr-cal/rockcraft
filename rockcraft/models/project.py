@@ -25,6 +25,7 @@ import craft_cli
 import pydantic
 import spdx_lookup  # type: ignore
 import yaml
+import craft_application.models
 from craft_application.errors import CraftValidationError
 from craft_application.models import BuildInfo
 from craft_application.models import BuildPlanner as BaseBuildPlanner
@@ -49,54 +50,19 @@ else:
     _RunUser = Literal[tuple(SUPPORTED_GLOBAL_USERNAMES)] | None
 
 
-class Platform(pydantic.BaseModel):
+class Platform(craft_application.models.Platform):
     """Rockcraft project platform definition."""
-
-    build_on: pydantic.conlist(str, unique_items=True, min_items=1) | None  # type: ignore[valid-type]
-    build_for: pydantic.conlist(  # type: ignore[valid-type]
-        str, unique_items=True, min_items=1
-    ) | None
-
-    class Config:  # pylint: disable=too-few-public-methods
-        """Pydantic model configuration."""
-
-        allow_population_by_field_name = True
-        alias_generator: Callable[[str], str] = lambda s: s.replace(  # noqa: E731
-            "_", "-"
-        )
 
     @pydantic.validator("build_for", pre=True)
     @classmethod
     def _vectorise_build_for(cls, val: str | list[str]) -> list[str]:
         """Vectorise target architecture if needed."""
+        print("XXXXXXX")
         if isinstance(val, str):
+            print(f"converting {val=} to list")
             val = [val]
+        print(f"not converting {val=}")
         return val
-
-    @pydantic.root_validator(skip_on_failure=True)
-    @classmethod
-    def _validate_platform_set(cls, values: Mapping[str, Any]) -> Mapping[str, Any]:
-        """Validate the build_on build_for combination."""
-        build_for: list[str] = values["build_for"] if values.get("build_for") else []
-        build_on: list[str] = values["build_on"] if values.get("build_on") else []
-
-        # We can only build for 1 arch at the moment
-        if len(build_for) > 1:
-            raise CraftValidationError(
-                str(
-                    f"Trying to build a rock for {build_for} "
-                    "but multiple target architectures are not "
-                    "currently supported. Please specify only 1 value."
-                )
-            )
-
-        # If build_for is provided, then build_on must also be
-        if not build_on and build_for:
-            raise CraftValidationError(
-                "'build_for' expects 'build_on' to also be provided."
-            )
-
-        return values
 
 
 NAME_REGEX = r"^([a-z](?:-?[a-z0-9]){2,})$"
@@ -129,50 +95,68 @@ class NameStr(pydantic.ConstrainedStr):
 class BuildPlanner(BaseBuildPlanner):
     """BuildPlanner for Rockcraft projects."""
 
-    platforms: dict[str, Any]  # type: ignore[reportIncompatibleVariableOverride]
+    @property
+    def effective_base(self) -> bases.BaseName:
+        """Get the Base name for craft-providers."""
+        base = self.build_base if self.build_base else self.base
+
+        if base == "devel":
+            name, channel = "ubuntu", "devel"
+        else:
+            name, channel = base.split("@")
+
+        return bases.BaseName(name, channel)
+
+
+class Project(YamlModelMixin, BaseProject):  # type: ignore[misc]
+    """Rockcraft project definition."""
+
+    name: NameStr  # type: ignore
+    # summary is Optional[str] in BaseProject
+    summary: str  # type: ignore
+    description: str  # type: ignore[reportIncompatibleVariableOverride]
+    rock_license: str = pydantic.Field(alias="license")
+    environment: dict[str, str] | None
+    run_user: _RunUser
+    services: dict[str, Service] | None
+    checks: dict[str, Check] | None
+    entrypoint_service: str | None
+    platforms: dict[str, Platform | None] | None = None
     base: Literal["bare", "ubuntu@20.04", "ubuntu@22.04", "ubuntu@24.04"]
     build_base: Literal["ubuntu@20.04", "ubuntu@22.04", "ubuntu@24.04", "devel"] | None
 
-    @pydantic.validator("build_base", always=True)
-    @classmethod
-    def _validate_build_base(
-        cls, build_base: str | None, values: dict[str, Any]
-    ) -> str:
-        """Build-base defaults to the base value if not specified.
+    package_repositories: list[dict[str, Any]] | None
 
-        :raises CraftValidationError: If base validation fails.
+    parts: dict[str, Any]
+
+    class Config(CraftBaseConfig):  # pylint: disable=too-few-public-methods
+        """Pydantic model configuration."""
+
+        allow_mutation = False
+        extra = pydantic.Extra.forbid
+
+    @override
+    @classmethod
+    def _providers_base(cls, base: str) -> bases.BaseAlias | None:
+        """Get a BaseAlias from rockcraft's base.
+
+        :param base: The base name.
+
+        :returns: The BaseAlias for the base or None for bare bases.
+
+        :raises CraftValidationError: If the project's base cannot be determined.
         """
-        if not build_base:
-            base_value = values.get("base")
-            if base_value == "bare":
-                raise CraftValidationError(
-                    'When "base" is bare, a build-base must be specified!'
-                )
-            build_base = values.get("base")
-        return cast(str, build_base)
+        if base == "bare":
+            return None
 
-    @pydantic.validator("base", pre=True)
-    @classmethod
-    def _validate_deprecated_base(cls, base_value: str | None) -> str | None:
-        return cls._check_deprecated_base(base_value, "base")
+        if base == "devel":
+            return bases.get_base_alias(("ubuntu", "devel"))
 
-    @pydantic.validator("build_base", pre=True)
-    @classmethod
-    def _validate_deprecated_build_base(cls, base_value: str | None) -> str | None:
-        return cls._check_deprecated_base(base_value, "build_base")
-
-    @staticmethod
-    def _check_deprecated_base(base_value: str | None, field_name: str) -> str | None:
-        if base_value in DEPRECATED_COLON_BASES:
-            at_value = base_value.replace(":", "@")
-            message = (
-                f'Warning: use of ":" in field "{field_name}" is deprecated. '
-                f'Prefer "{at_value}" instead.'
-            )
-            craft_cli.emit.message(message)
-            return at_value
-
-        return base_value
+        try:
+            name, channel = base.split("@")
+            return bases.get_base_alias((name, channel))
+        except (ValueError, BaseConfigurationError) as err:
+            raise CraftValidationError(f"Unknown base {base!r}") from err
 
     @pydantic.validator("platforms")
     @classmethod
@@ -236,84 +220,46 @@ class BuildPlanner(BaseBuildPlanner):
 
         return platforms
 
-    @property
-    def effective_base(self) -> bases.BaseName:
-        """Get the Base name for craft-providers."""
-        base = self.build_base if self.build_base else self.base
-
-        if base == "devel":
-            name, channel = "ubuntu", "devel"
-        else:
-            name, channel = base.split("@")
-
-        return bases.BaseName(name, channel)
-
-    def get_build_plan(self) -> list[BuildInfo]:
-        """Obtain the list of architectures and bases from the project file."""
-        build_infos: list[BuildInfo] = []
-        base = self.effective_base
-
-        for platform_entry, platform in self.platforms.items():
-            for build_for in platform.get("build_for") or [platform_entry]:
-                for build_on in platform.get("build_on") or [platform_entry]:
-                    build_infos.append(
-                        BuildInfo(
-                            platform=platform_entry,
-                            build_on=build_on,
-                            build_for=build_for,
-                            base=base,
-                        )
-                    )
-
-        return build_infos
-
-
-class Project(YamlModelMixin, BuildPlanner, BaseProject):  # type: ignore[misc]
-    """Rockcraft project definition."""
-
-    name: NameStr  # type: ignore
-    # summary is Optional[str] in BaseProject
-    summary: str  # type: ignore
-    description: str  # type: ignore[reportIncompatibleVariableOverride]
-    rock_license: str = pydantic.Field(alias="license")
-    environment: dict[str, str] | None
-    run_user: _RunUser
-    services: dict[str, Service] | None
-    checks: dict[str, Check] | None
-    entrypoint_service: str | None
-
-    package_repositories: list[dict[str, Any]] | None
-
-    parts: dict[str, Any]
-
-    class Config(CraftBaseConfig):  # pylint: disable=too-few-public-methods
-        """Pydantic model configuration."""
-
-        allow_mutation = False
-        extra = pydantic.Extra.forbid
-
-    @override
+    @pydantic.validator("base", pre=True)
     @classmethod
-    def _providers_base(cls, base: str) -> bases.BaseAlias | None:
-        """Get a BaseAlias from rockcraft's base.
+    def _validate_deprecated_base(cls, base_value: str | None) -> str | None:
+        return cls._check_deprecated_base(base_value, "base")
 
-        :param base: The base name.
+    @pydantic.validator("build_base", pre=True)
+    @classmethod
+    def _validate_deprecated_build_base(cls, base_value: str | None) -> str | None:
+        return cls._check_deprecated_base(base_value, "build_base")
 
-        :returns: The BaseAlias for the base or None for bare bases.
+    @staticmethod
+    def _check_deprecated_base(base_value: str | None, field_name: str) -> str | None:
+        if base_value in DEPRECATED_COLON_BASES:
+            at_value = base_value.replace(":", "@")
+            message = (
+                f'Warning: use of ":" in field "{field_name}" is deprecated. '
+                f'Prefer "{at_value}" instead.'
+            )
+            craft_cli.emit.message(message)
+            return at_value
 
-        :raises CraftValidationError: If the project's base cannot be determined.
+        return base_value
+
+    @pydantic.validator("build_base", always=True)
+    @classmethod
+    def _validate_build_base(
+            cls, build_base: str | None, values: dict[str, Any]
+    ) -> str:
+        """Build-base defaults to the base value if not specified.
+
+        :raises CraftValidationError: If base validation fails.
         """
-        if base == "bare":
-            return None
-
-        if base == "devel":
-            return bases.get_base_alias(("ubuntu", "devel"))
-
-        try:
-            name, channel = base.split("@")
-            return bases.get_base_alias((name, channel))
-        except (ValueError, BaseConfigurationError) as err:
-            raise CraftValidationError(f"Unknown base {base!r}") from err
+        if not build_base:
+            base_value = values.get("base")
+            if base_value == "bare":
+                raise CraftValidationError(
+                    'When "base" is bare, a build-base must be specified!'
+                )
+            build_base = values.get("base")
+        return cast(str, build_base)
 
     @pydantic.root_validator(pre=True)
     @classmethod

@@ -23,7 +23,7 @@ from rockcraft.pebble import Pebble
 ENVIRONMENT_YAML = """\
 name: environment-test
 version: 2.0
-base: ubuntu:20.04
+base: ubuntu@20.04
 summary: Environment
 description: A rock with an environment but no real purpose
 license: Apache-2.0
