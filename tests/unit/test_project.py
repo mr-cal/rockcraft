@@ -144,10 +144,12 @@ def test_project_unmarshal(check, yaml_loaded_data):
             # platforms get mutated at validation time
             assert getattr(project, attr).keys() == v.keys()
             assert all(
-                "build_on" in platform for platform in getattr(project, attr).values()
+                hasattr(platform, "build_on")
+                for platform in getattr(project, attr).values()
             )
             assert all(
-                "build_for" in platform for platform in getattr(project, attr).values()
+                hasattr(platform, "build_for")
+                for platform in getattr(project, attr).values()
             )
             continue
         if attr == "services":
@@ -397,9 +399,7 @@ def test_project_all_platforms_invalid(yaml_loaded_data):
     # A platform validation error must have an explicit prefix indicating
     # the platform entry for which the validation has failed
     mock_platforms = {"foo": {"build-for": ["amd64"]}}
-    assert "'foo': 'build_for' expects 'build_on'" in reload_project_platforms(
-        mock_platforms
-    )
+    assert "'build_for' expects 'build_on'" in reload_project_platforms(mock_platforms)
 
     # If the label maps to a valid architecture and
     # `build-for` is present, then both need to have the same value    mock_platforms = {"mock": {"build-on": "amd64"}}
@@ -625,18 +625,16 @@ description: this is an example of a rockcraft.yaml for the purpose of testing r
 base: ubuntu@20.04
 build-base: ubuntu@20.04
 platforms:
-  {BUILD_ON_ARCH}:
-    build_on: null
-    build_for: null
+  {BUILD_ON_ARCH}: {{}}
   some-text:
-    build_on:
+    build-on:
     - {BUILD_ON_ARCH}
-    build_for:
+    build-for:
     - {BUILD_ON_ARCH}
   same-with-different-syntax:
-    build_on:
+    build-on:
     - {BUILD_ON_ARCH}
-    build_for:
+    build-for:
     - {BUILD_ON_ARCH}
 license: Apache-2.0
 parts:
