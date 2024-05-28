@@ -122,8 +122,8 @@ class BuildPlanner(BaseBuildPlanner):
     """BuildPlanner for Rockcraft projects."""
 
     platforms: dict[str, Platform | None]  # type: ignore[assignment, reportIncompatibleVariableOverride]
-    base: Literal["bare", "ubuntu@20.04", "ubuntu@22.04", "ubuntu@24.04"]  # type: ignore[reportIncompatibleVariableOverride]
-    build_base: Literal["ubuntu@20.04", "ubuntu@22.04", "ubuntu@24.04", "devel"] | None  # type: ignore[reportIncompatibleVariableOverride]
+    base: Literal["bare", "ubuntu@20.04", "ubuntu@22.04", "ubuntu@24.04"]
+    build_base: Literal["ubuntu@20.04", "ubuntu@22.04", "ubuntu@24.04", "devel"] | None
 
     @pydantic.validator("build_base", always=True)
     @classmethod
