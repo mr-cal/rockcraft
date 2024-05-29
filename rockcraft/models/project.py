@@ -15,6 +15,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 """Project definition and helpers."""
+import copy
 import re
 import shlex
 from collections.abc import Mapping
@@ -121,7 +122,7 @@ class NameStr(pydantic.ConstrainedStr):
 class BuildPlanner(BaseBuildPlanner):
     """BuildPlanner for Rockcraft projects."""
 
-    platforms: dict[str, Platform | None]  # type: ignore[assignment, reportIncompatibleVariableOverride]
+    platforms: dict[str, Platform]  # type: ignore[assignment, reportIncompatibleVariableOverride]
     base: Literal["bare", "ubuntu@20.04", "ubuntu@22.04", "ubuntu@24.04"]
     build_base: Literal["ubuntu@20.04", "ubuntu@22.04", "ubuntu@24.04", "devel"] | None
 
@@ -255,7 +256,7 @@ class Project(YamlModelMixin, BuildPlanner, BaseProject):  # type: ignore[misc]
     services: dict[str, Service] | None
     checks: dict[str, Check] | None
     entrypoint_service: str | None
-    platforms: dict[str, Platform | None]  # type: ignore[assignment]
+    platforms: dict[str, Platform]  # type: ignore[assignment]
 
     package_repositories: list[dict[str, Any]] | None
 
@@ -524,7 +525,8 @@ def _add_pebble_data(yaml_data: dict[str, Any]) -> None:
         # Project already has a pebble part: this is not supported.
         raise CraftValidationError('Cannot override the default "pebble" part')
 
-    model = BuildPlanner.unmarshal(yaml_data)
+    # do not modify the original data with pre-validators
+    model = BuildPlanner.unmarshal(copy.deepcopy(yaml_data))
     build_base = model.build_base if model.build_base else model.base
 
     parts["pebble"] = Pebble.get_part_spec(build_base)
