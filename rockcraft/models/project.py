@@ -122,9 +122,9 @@ class NameStr(pydantic.ConstrainedStr):
 class BuildPlanner(BaseBuildPlanner):
     """BuildPlanner for Rockcraft projects."""
 
-    platforms: dict[str, Platform]  # type: ignore[assignment, reportIncompatibleVariableOverride]
-    base: Literal["bare", "ubuntu@20.04", "ubuntu@22.04", "ubuntu@24.04"]
-    build_base: Literal["ubuntu@20.04", "ubuntu@22.04", "ubuntu@24.04", "devel"] | None
+    platforms: dict[str, Platform]  # type: ignore[assignment]
+    base: Literal["bare", "ubuntu@20.04", "ubuntu@22.04", "ubuntu@24.04"]  # type: ignore[reportIncompatibleVariableOverride]
+    build_base: Literal["ubuntu@20.04", "ubuntu@22.04", "ubuntu@24.04", "devel"] | None  # type: ignore[reportIncompatibleVariableOverride]
 
     @pydantic.validator("build_base", always=True)
     @classmethod
@@ -187,9 +187,7 @@ class BuildPlanner(BaseBuildPlanner):
 
             # build_on and build_for are validated
             # let's also validate the platform label
-            build_on_one_of = (
-                platform.build_on if platform.build_on else [platform_label]
-            )
+            build_on_one_of = platform.build_on or [platform_label]
 
             # If the label maps to a valid architecture and
             # `build-for` is present, then both need to have the same value,
@@ -256,7 +254,7 @@ class Project(YamlModelMixin, BuildPlanner, BaseProject):  # type: ignore[misc]
     services: dict[str, Service] | None
     checks: dict[str, Check] | None
     entrypoint_service: str | None
-    platforms: dict[str, Platform]  # type: ignore[assignment]
+    platforms: dict[str, Platform | None]  # type: ignore[assignment]
 
     package_repositories: list[dict[str, Any]] | None
 
